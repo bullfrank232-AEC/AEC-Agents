@@ -6,9 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { BidStatus } from "@/generated/prisma/enums";
 import { postBidCreatedNotification, postBidStatusChangedNotification } from "@/lib/graph/teams";
-import { getGraphAccessToken } from "@/lib/graph/client";
-import { attachDocumentToBid, listDocumentLibraryItems } from "@/lib/graph/sharepoint";
-import { createDueDateEvent, sendDeadlineReminder } from "@/lib/graph/outlook";
+import { addDocumentLink } from "@/lib/graph/sharepoint";
 
 async function currentUserId() {
   const session = await auth();
@@ -138,56 +136,23 @@ export async function addBidNote(bidId: string, formData: FormData) {
   revalidatePath(`/bids/${bidId}`);
 }
 
-export async function attachSharePointDocument(bidId: string, formData: FormData) {
-  const accessToken = await getGraphAccessToken();
-  if (!accessToken) throw new Error("Sign in with Microsoft to attach SharePoint documents.");
+export async function addBidDocumentLink(bidId: string, formData: FormData) {
+  const url = str(formData, "url");
+  const label = str(formData, "label");
+  if (!url) return;
 
-  const itemId = str(formData, "itemId");
-  const items = await listDocumentLibraryItems(accessToken);
-  const item = items.find((i) => i.id === itemId);
-  if (!item) throw new Error("Document not found in the configured SharePoint library.");
-
-  await attachDocumentToBid(bidId, item, await currentUserId());
-  revalidatePath(`/bids/${bidId}`);
-}
-
-export async function sendBidDeadlineReminder(bidId: string) {
-  const accessToken = await getGraphAccessToken();
-  const session = await auth();
-  if (!accessToken || !session?.user?.email) {
-    throw new Error("Sign in with Microsoft to send Outlook reminders.");
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Enter a valid document link (starting with https://).");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Enter a valid document link (starting with https://).");
   }
 
-  const bid = await prisma.bid.findUniqueOrThrow({ where: { id: bidId } });
-  await sendDeadlineReminder(bid, session.user.email, accessToken);
-
-  await prisma.bidActivity.create({
-    data: {
-      bidId,
-      userId: session.user.id,
-      type: "NOTIFICATION_SENT",
-      message: `Deadline reminder emailed to ${session.user.email} via Outlook.`,
-    },
-  });
-
-  revalidatePath(`/bids/${bidId}`);
-}
-
-export async function addBidDueDateToCalendar(bidId: string) {
-  const accessToken = await getGraphAccessToken();
-  if (!accessToken) throw new Error("Sign in with Microsoft to create calendar events.");
-
-  const bid = await prisma.bid.findUniqueOrThrow({ where: { id: bidId } });
-  await createDueDateEvent(bid, accessToken);
-
-  await prisma.bidActivity.create({
-    data: {
-      bidId,
-      userId: await currentUserId(),
-      type: "NOTIFICATION_SENT",
-      message: "Due date added to Outlook calendar.",
-    },
-  });
+  const fallbackLabel = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() ?? url);
+  await addDocumentLink(bidId, { url, label: label ?? fallbackLabel }, await currentUserId());
 
   revalidatePath(`/bids/${bidId}`);
 }

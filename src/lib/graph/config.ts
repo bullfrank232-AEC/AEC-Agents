@@ -9,18 +9,3 @@ export function isAzureAdConfigured() {
       process.env.AZURE_AD_TENANT_ID
   );
 }
-
-export function isSharePointConfigured() {
-  return Boolean(isAzureAdConfigured() && process.env.SHAREPOINT_SITE_ID && process.env.SHAREPOINT_DRIVE_ID);
-}
-
-export function isOutlookConfigured() {
-  return isAzureAdConfigured();
-}
-
-export const m365ConnectionStatus = {
-  azureAd: isAzureAdConfigured,
-  teams: isTeamsConfigured,
-  sharePoint: isSharePointConfigured,
-  outlook: isOutlookConfigured,
-};

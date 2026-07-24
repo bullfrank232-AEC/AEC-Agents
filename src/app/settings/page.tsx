@@ -1,4 +1,4 @@
-import { isAzureAdConfigured, isOutlookConfigured, isSharePointConfigured, isTeamsConfigured } from "@/lib/graph/config";
+import { isAzureAdConfigured, isTeamsConfigured } from "@/lib/graph/config";
 
 const ITEMS = [
   {
@@ -6,28 +6,14 @@ const ITEMS = [
     name: "Sign-in with Microsoft (Azure AD)",
     check: isAzureAdConfigured,
     envVars: ["AZURE_AD_CLIENT_ID", "AZURE_AD_CLIENT_SECRET", "AZURE_AD_TENANT_ID"],
-    help: "Register an app in Microsoft Entra ID and set these so users sign in with their company account.",
-  },
-  {
-    key: "sharePoint",
-    name: "SharePoint / OneDrive documents",
-    check: isSharePointConfigured,
-    envVars: ["SHAREPOINT_SITE_ID", "SHAREPOINT_DRIVE_ID"],
-    help: "Requires Azure AD to be configured, plus the target SharePoint site/drive IDs, and the Sites.ReadWrite.All (or Files.ReadWrite.All) Graph permission.",
-  },
-  {
-    key: "outlook",
-    name: "Outlook email & calendar",
-    check: isOutlookConfigured,
-    envVars: ["AZURE_AD_CLIENT_ID", "AZURE_AD_CLIENT_SECRET", "AZURE_AD_TENANT_ID"],
-    help: "Uses the same Azure AD app registration, with Mail.Send and Calendars.ReadWrite Graph permissions granted.",
+    help: "Register an app in Microsoft Entra ID and set these so users sign in with their company account. Optional — without it, everyone uses the local dev-login picker instead.",
   },
   {
     key: "teams",
     name: "Teams notifications",
     check: isTeamsConfigured,
     envVars: ["TEAMS_WEBHOOK_URL"],
-    help: "Create an Incoming Webhook connector on a Teams channel and set its URL here.",
+    help: "Create an Incoming Webhook connector on a Teams channel (usually doesn't need a tenant admin) and set its URL here.",
   },
 ] as const;
 
@@ -64,6 +50,16 @@ export default function SettingsPage() {
             </div>
           );
         })}
+      </div>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 text-sm text-zinc-600">
+        <p className="font-medium text-zinc-900">Documents, reminders, and calendar don&apos;t need any setup</p>
+        <p className="mt-1">
+          Bid documents are linked by pasting a SharePoint/OneDrive share link on the bid page.
+          Deadline reminders open a pre-filled email in your own mail app, and calendar events
+          download as a standard .ics file — both work immediately with whatever mail/calendar
+          app is already installed, no Microsoft 365 configuration required.
+        </p>
       </div>
     </div>
   );

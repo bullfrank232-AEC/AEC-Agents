@@ -1,16 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import {
-  changeBidStatus,
-  addBidNote,
-  attachSharePointDocument,
-  sendBidDeadlineReminder,
-  addBidDueDateToCalendar,
-} from "@/app/actions";
-import { isOutlookConfigured, isSharePointConfigured } from "@/lib/graph/config";
-import { getGraphAccessToken } from "@/lib/graph/client";
-import { listDocumentLibraryItems } from "@/lib/graph/sharepoint";
+import { auth } from "@/lib/auth";
+import { changeBidStatus, addBidNote, addBidDocumentLink } from "@/app/actions";
+import { buildReminderMailto } from "@/lib/graph/outlook";
 import {
   STATUS_COLORS,
   STATUS_LABELS,
@@ -27,32 +20,29 @@ export default async function BidDetailPage({
 }) {
   const { id } = await params;
 
-  const bid = await prisma.bid.findUnique({
-    where: { id },
-    include: {
-      department: true,
-      owner: true,
-      documents: true,
-      assignments: { include: { user: true } },
-      activities: { include: { user: true }, orderBy: { createdAt: "desc" } },
-    },
-  });
+  const [bid, session] = await Promise.all([
+    prisma.bid.findUnique({
+      where: { id },
+      include: {
+        department: true,
+        owner: true,
+        documents: true,
+        assignments: { include: { user: true } },
+        activities: { include: { user: true }, orderBy: { createdAt: "desc" } },
+      },
+    }),
+    auth(),
+  ]);
 
   if (!bid) notFound();
 
   const changeStatus = changeBidStatus.bind(null, bid.id);
   const addNote = addBidNote.bind(null, bid.id);
-  const attachDocument = attachSharePointDocument.bind(null, bid.id);
-  const sendReminder = sendBidDeadlineReminder.bind(null, bid.id);
-  const addToCalendar = addBidDueDateToCalendar.bind(null, bid.id);
+  const addDocumentLink = addBidDocumentLink.bind(null, bid.id);
 
-  const sharePointReady = isSharePointConfigured();
-  const outlookReady = isOutlookConfigured();
-  const accessToken = await getGraphAccessToken();
-  const availableDocuments =
-    sharePointReady && accessToken ? await listDocumentLibraryItems(accessToken) : [];
-  const linkedItemIds = new Set(bid.documents.map((doc) => doc.sharePointItemId));
-  const pickableDocuments = availableDocuments.filter((item) => !linkedItemIds.has(item.id));
+  const reminderMailto = session?.user?.email
+    ? buildReminderMailto(bid, session.user.email)
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,45 +100,26 @@ export default async function BidDetailPage({
               </ul>
             )}
 
-            {!sharePointReady ? (
-              <p className="text-sm text-zinc-500">
-                Connect SharePoint in{" "}
-                <Link href="/settings" className="underline">
-                  Settings
-                </Link>{" "}
-                to attach bid documents here.
-              </p>
-            ) : !accessToken ? (
-              <p className="text-sm text-zinc-500">
-                Sign in with Microsoft to browse and attach SharePoint documents.
-              </p>
-            ) : pickableDocuments.length === 0 ? (
-              <p className="text-sm text-zinc-500">No other files found in the document library.</p>
-            ) : (
-              <form action={attachDocument} className="flex items-center gap-2">
-                <select
-                  name="itemId"
-                  required
-                  defaultValue=""
-                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  <option value="" disabled>
-                    Select a document to link
-                  </option>
-                  {pickableDocuments.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400"
-                >
-                  Attach
-                </button>
-              </form>
-            )}
+            <form action={addDocumentLink} className="flex flex-col gap-2 sm:flex-row">
+              <input
+                name="url"
+                type="url"
+                required
+                placeholder="Paste a SharePoint/OneDrive link (https://...)"
+                className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <input
+                name="label"
+                placeholder="Label (optional)"
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm sm:w-40"
+              />
+              <button
+                type="submit"
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400"
+              >
+                Add link
+              </button>
+            </form>
           </section>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5">
@@ -185,27 +156,25 @@ export default async function BidDetailPage({
         </div>
 
         <div className="flex flex-col gap-6">
-          {outlookReady && accessToken && (
+          {(reminderMailto || bid.dueDate) && (
             <section className="rounded-lg border border-zinc-200 bg-white p-5">
-              <h2 className="mb-3 text-sm font-semibold text-zinc-700">Outlook</h2>
+              <h2 className="mb-3 text-sm font-semibold text-zinc-700">Reminders</h2>
               <div className="flex flex-col gap-2">
-                <form action={sendReminder}>
-                  <button
-                    type="submit"
-                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400"
+                {reminderMailto && (
+                  <a
+                    href={reminderMailto}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-center text-sm font-medium text-zinc-700 hover:border-zinc-400"
                   >
                     Email deadline reminder to me
-                  </button>
-                </form>
+                  </a>
+                )}
                 {bid.dueDate && (
-                  <form action={addToCalendar}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400"
-                    >
-                      Add due date to my calendar
-                    </button>
-                  </form>
+                  <a
+                    href={`/api/bids/${bid.id}/ics`}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-center text-sm font-medium text-zinc-700 hover:border-zinc-400"
+                  >
+                    Add due date to my calendar (.ics)
+                  </a>
                 )}
               </div>
             </section>

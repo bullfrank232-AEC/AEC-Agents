@@ -1,4 +1,3 @@
-import { graphFetch } from "@/lib/graph/client";
 import { formatCurrency, formatDate } from "@/lib/labels";
 
 type ReminderBid = {
@@ -9,41 +8,52 @@ type ReminderBid = {
   estimatedValue: number | null;
 };
 
-export async function sendDeadlineReminder(bid: ReminderBid, toEmail: string, accessToken: string) {
-  await graphFetch("/me/sendMail", accessToken, {
-    method: "POST",
-    body: JSON.stringify({
-      message: {
-        subject: `Bid deadline reminder: ${bid.bidNumber} due ${formatDate(bid.dueDate)}`,
-        body: {
-          contentType: "Text",
-          content:
-            `${bid.projectName} (${bid.client}) is due ${formatDate(bid.dueDate)}.\n` +
-            `Estimated value: ${formatCurrency(bid.estimatedValue)}.\n\n` +
-            `Sent from Bid Tracker.`,
-        },
-        toRecipients: [{ emailAddress: { address: toEmail } }],
-      },
-    }),
-  });
+/**
+ * These build plain mailto: links and .ics files instead of calling the
+ * Graph API — no sign-in scopes, no admin consent, no configuration. They
+ * just hand off to whatever mail/calendar app is already installed.
+ */
+export function buildReminderMailto(bid: ReminderBid, toEmail: string) {
+  const subject = encodeURIComponent(
+    `Bid deadline reminder: ${bid.bidNumber} due ${formatDate(bid.dueDate)}`
+  );
+  const body = encodeURIComponent(
+    `${bid.projectName} (${bid.client}) is due ${formatDate(bid.dueDate)}.\n` +
+      `Estimated value: ${formatCurrency(bid.estimatedValue)}.`
+  );
+  return `mailto:${encodeURIComponent(toEmail)}?subject=${subject}&body=${body}`;
 }
 
-export async function createDueDateEvent(bid: ReminderBid, accessToken: string) {
+function toIcsDate(date: Date) {
+  return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+}
+
+function escapeIcsText(text: string) {
+  return text.replace(/([,;])/g, "\\$1").replace(/\n/g, "\\n");
+}
+
+export function buildDueDateIcs(bid: ReminderBid & { id: string }) {
   if (!bid.dueDate) throw new Error("Bid has no due date to schedule.");
 
-  const start = bid.dueDate.toISOString();
-  const end = new Date(bid.dueDate.getTime() + 60 * 60 * 1000).toISOString();
+  const start = toIcsDate(bid.dueDate);
+  const end = toIcsDate(new Date(bid.dueDate.getTime() + 60 * 60 * 1000));
+  const summary = escapeIcsText(`Bid due: ${bid.bidNumber} — ${bid.projectName}`);
+  const description = escapeIcsText(
+    `${bid.projectName} for ${bid.client} is due today. Estimated value: ${formatCurrency(bid.estimatedValue)}.`
+  );
 
-  return graphFetch("/me/events", accessToken, {
-    method: "POST",
-    body: JSON.stringify({
-      subject: `Bid due: ${bid.bidNumber} — ${bid.projectName}`,
-      body: {
-        contentType: "Text",
-        content: `${bid.projectName} for ${bid.client} is due today. Estimated value: ${formatCurrency(bid.estimatedValue)}.`,
-      },
-      start: { dateTime: start, timeZone: "UTC" },
-      end: { dateTime: end, timeZone: "UTC" },
-    }),
-  });
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Bid Tracker//EN",
+    "BEGIN:VEVENT",
+    `UID:${bid.id}@bid-tracker`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 }

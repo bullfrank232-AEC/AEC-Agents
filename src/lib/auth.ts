@@ -6,18 +6,6 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { isAzureAdConfigured } from "@/lib/graph/config";
-import { refreshAzureAccessToken } from "@/lib/graph/client";
-
-const GRAPH_SCOPES = [
-  "openid",
-  "profile",
-  "email",
-  "offline_access",
-  "User.Read",
-  "Sites.ReadWrite.All",
-  "Mail.Send",
-  "Calendars.ReadWrite",
-].join(" ");
 
 // Dev-only stand-in for real sign-in until Azure AD is configured (see SETUP.md).
 // Enabled by default only when Azure AD is NOT configured; can be force-enabled
@@ -29,11 +17,12 @@ const providers: Provider[] = [];
 
 if (isAzureAdConfigured()) {
   providers.push(
+    // Default scopes only (openid/profile/email/User.Read) — no extra Graph
+    // permissions requested, so this never needs tenant admin consent.
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
       issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
-      authorization: { params: { scope: GRAPH_SCOPES } },
     })
   );
 }
@@ -85,25 +74,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.departmentId = dbUser.departmentId;
       }
 
-      if (account?.provider === "microsoft-entra-id") {
-        token.accessToken = account.access_token;
-        token.refreshToken = account.refresh_token;
-        token.accessTokenExpires = account.expires_at ? account.expires_at * 1000 : undefined;
-        return token;
-      }
-
-      if (token.accessToken && token.accessTokenExpires && Date.now() > token.accessTokenExpires - 60_000) {
-        return refreshAzureAccessToken(token);
-      }
-
       return token;
     },
     async session({ session, token }: { session: Session; token: JWT }) {
       if (token.id) session.user.id = token.id;
       if (token.role) session.user.role = token.role;
       session.user.departmentId = token.departmentId ?? null;
-      // Server-only: used by lib/graph/* to call Microsoft Graph on the user's behalf.
-      session.accessToken = token.accessToken;
       return session;
     },
   },

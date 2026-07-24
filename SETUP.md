@@ -38,15 +38,21 @@ shared deployment:
 
 ## 3. Connect Microsoft 365
 
-All of this is optional — the app works without it, just without the M365 features. Check
-`/settings` in the running app to see what's connected.
+Everything here is optional and designed for **no admin/IT involvement** — you don't need to be a
+Microsoft 365 admin for any of it. If you don't have admin rights, skip straight to 3b, or just
+use the local dev-login picker indefinitely (it's a fully supported way to run this).
 
-### 3a. Register an app in Microsoft Entra ID
+### 3a. Sign-in with Microsoft (optional)
 
-You'll need a Microsoft 365 admin (or Application Administrator role) for this part.
+Documents, reminders, and calendar all work without this — it only affects how people log in
+(their Microsoft account vs. the local picker). Most Microsoft 365 tenants let any user register
+an app (it's a tenant-wide default setting, not an admin role), and this app only requests the
+default sign-in scopes (name/email), which don't need admin consent.
 
 1. Go to [entra.microsoft.com](https://entra.microsoft.com) → **Applications** → **App
-   registrations** → **New registration**.
+   registrations** → **New registration**. If you get an "insufficient privileges" error here,
+   your org has disabled self-service app registration — ask IT to do just this one step for you,
+   or skip this section entirely and keep using the local login picker.
 2. Name it (e.g. "Bid Tracker"), leave the default account type (single tenant) unless you know
    you need otherwise, and set the **Redirect URI** to a **Web** platform:
    `http://<your-server>:3000/api/auth/callback/microsoft-entra-id`
@@ -55,54 +61,37 @@ You'll need a Microsoft 365 admin (or Application Administrator role) for this p
    Overview page.
 4. Go to **Certificates & secrets** → **New client secret**. Copy the secret **value**
    immediately (it's hidden after you leave the page).
-5. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated
-   permissions**, and add:
-   - `User.Read` (usually added by default)
-   - `Sites.ReadWrite.All` (SharePoint documents) — or the narrower `Files.ReadWrite.All` if you
-     prefer per-drive access
-   - `Mail.Send` (Outlook reminder emails)
-   - `Calendars.ReadWrite` (Outlook calendar events)
-   - `offline_access` (keeps users signed in / lets the app refresh tokens)
-   Click **Grant admin consent** for your organization.
-
-6. Set these in `.env`:
+5. That's it — no API permissions to add, no admin consent to request. Set these in `.env`:
    ```
    AZURE_AD_CLIENT_ID="<Application (client) ID>"
    AZURE_AD_CLIENT_SECRET="<the secret value>"
    AZURE_AD_TENANT_ID="<Directory (tenant) ID>"
    ```
 
-Restart the app. `/settings` should now show "Sign-in with Microsoft" and "Outlook email &
-calendar" as connected, and the sign-in page will show a "Sign in with Microsoft" button.
+Restart the app. `/settings` should now show "Sign-in with Microsoft" as connected, and the
+sign-in page will show a "Sign in with Microsoft" button alongside the local picker.
 
-### 3b. SharePoint documents
+### 3b. Documents, reminders, and calendar — zero setup
 
-Bid documents are linked (not copied) from a SharePoint document library you choose.
+These don't use the Microsoft Graph API at all, so there's nothing to configure and nothing that
+can be locked down by IT policy:
 
-1. Find your **Site ID**: with an admin account, visit
-   `https://graph.microsoft.com/v1.0/sites/<yourtenant>.sharepoint.com:/sites/<sitename>` in a
-   browser while signed in, or use the [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer)
-   to run `GET /sites/<yourtenant>.sharepoint.com:/sites/<sitename>` and copy the `id` field.
-2. Find your **Drive ID** (the document library): `GET /sites/<siteId>/drives` and copy the `id`
-   of the library you want (usually "Documents").
-3. Set:
-   ```
-   SHAREPOINT_SITE_ID="<site id>"
-   SHAREPOINT_DRIVE_ID="<drive id>"
-   ```
+- **Documents**: paste a SharePoint/OneDrive share link directly into the bid page (copy the link
+  the normal way — right-click the file → Copy link). It's just stored as a URL.
+- **Deadline reminders**: click "Email deadline reminder to me" on a bid — it opens a pre-filled
+  draft in whatever mail app you already have set up (Outlook, browser Outlook, anything
+  registered as your `mailto:` handler).
+- **Calendar**: click "Add due date to my calendar" — downloads a standard `.ics` file that
+  double-clicks straight into Outlook (or any calendar app).
 
-Restart the app. Bid detail pages will now show a document picker for anyone signed in with
-Microsoft.
-
-### 3c. Teams notifications
+### 3c. Teams notifications (optional)
 
 1. In the Teams channel you want notifications posted to, go to **⋯** → **Workflows** (or
-   **Connectors** on older tenants) → set up an **Incoming Webhook**. Name it, optionally give it
-   an icon, and copy the webhook URL it gives you.
+   **Connectors** on older tenants) → set up an **Incoming Webhook**. This is usually available to
+   any channel member, not just admins/owners — try it before assuming you need help.
 2. Set `TEAMS_WEBHOOK_URL="<that url>"` in `.env`.
 
-This one doesn't need the Azure AD app registration — it works independently, as soon as the
-webhook URL is set.
+If your channel doesn't allow adding connectors, skip this — nothing else depends on it.
 
 ## 4. Importing your Access data
 

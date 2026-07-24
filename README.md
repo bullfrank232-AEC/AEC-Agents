@@ -2,7 +2,9 @@
 
 A local web app for tracking your bidding process across departments (Estimating, Project
 Management, Engineering, Procurement/Purchasing, Business Development), integrated with
-Microsoft 365 (sign-in, SharePoint documents, Outlook, Teams).
+Microsoft 365 (optional Microsoft sign-in, SharePoint document links, Outlook reminders/calendar,
+Teams notifications). Everything works with no Microsoft 365 admin rights required — see
+[SETUP.md](./SETUP.md).
 
 Built with Next.js (App Router), Prisma + SQLite, and NextAuth (Azure AD / Microsoft Entra ID).
 
@@ -25,10 +27,10 @@ For full setup, including connecting Microsoft 365 and running this for your who
 
 - **Dashboard** (`/`) — bids grouped by status, filterable by department
 - **Bid detail** (`/bids/[id]`) — status changes, activity/notes log, assigned users, linked
-  SharePoint documents, Outlook actions
+  document URLs, email/calendar reminders
 - **New / edit bid** (`/bids/new`, `/bids/[id]/edit`)
-- **Settings** (`/settings`) — shows which Microsoft 365 integrations are connected
-- **Sign-in** (`/signin`) — Microsoft sign-in, plus a local dev-only fallback
+- **Settings** (`/settings`) — shows which optional Microsoft 365 integrations are connected
+- **Sign-in** (`/signin`) — Microsoft sign-in (if configured), plus a local dev-only fallback
 
 ## Project structure
 
@@ -36,8 +38,8 @@ For full setup, including connecting Microsoft 365 and running this for your who
   BidAssignment)
 - `prisma/seed.ts` — seed script (departments + demo data)
 - `src/lib/auth.ts` — NextAuth config (Azure AD provider + local dev fallback)
-- `src/lib/graph/` — Microsoft Graph integration (`teams.ts`, `outlook.ts`, `sharepoint.ts`,
-  `config.ts` for connection-status checks)
+- `src/lib/graph/` — `teams.ts` (webhook notifications), `outlook.ts` (mailto/.ics builders),
+  `sharepoint.ts` (document link storage), `config.ts` (connection-status checks)
 - `src/app/` — pages, layout, and server actions (`actions.ts`)
 
 ## Replacing your Access database

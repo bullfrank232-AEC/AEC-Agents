@@ -1,0 +1,122 @@
+// Bid tracker data model.
+// SQLite for local/single-office use; swap the datasource + adapter to
+// Postgres/SQL Server later if this needs to run on a shared DB server.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  MEMBER
+  LEAD
+  ADMIN
+}
+
+enum BidStatus {
+  IDENTIFIED
+  REVIEWING
+  GO_NO_GO
+  SUBMITTED
+  WON
+  LOST
+  WITHDRAWN
+}
+
+enum ActivityType {
+  NOTE
+  STATUS_CHANGE
+  DOCUMENT_ADDED
+  ASSIGNMENT_CHANGE
+  NOTIFICATION_SENT
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users User[]
+  bids  Bid[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  azureAdId    String?  @unique
+  role         Role     @default(MEMBER)
+  departmentId String?
+  createdAt    DateTime @default(now())
+
+  department  Department?     @relation(fields: [departmentId], references: [id])
+  ownedBids   Bid[]           @relation("BidOwner")
+  activities  BidActivity[]
+  assignments BidAssignment[]
+  documents   BidDocument[]
+}
+
+model Bid {
+  id             String    @id @default(cuid())
+  bidNumber      String    @unique
+  projectName    String
+  client         String
+  departmentId   String
+  status         BidStatus @default(IDENTIFIED)
+  estimatedValue Float?
+  dueDate        DateTime?
+  submittedDate  DateTime?
+  awardDate      DateTime?
+  description    String?
+  ownerId        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department  Department      @relation(fields: [departmentId], references: [id])
+  owner       User?           @relation("BidOwner", fields: [ownerId], references: [id])
+  documents   BidDocument[]
+  activities  BidActivity[]
+  assignments BidAssignment[]
+}
+
+model BidDocument {
+  id               String   @id @default(cuid())
+  bidId            String
+  sharePointItemId String?
+  fileName         String
+  webUrl           String
+  uploadedById     String?
+  uploadedAt       DateTime @default(now())
+
+  bid        Bid   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  uploadedBy User? @relation(fields: [uploadedById], references: [id])
+}
+
+model BidActivity {
+  id        String       @id @default(cuid())
+  bidId     String
+  userId    String?
+  type      ActivityType @default(NOTE)
+  message   String
+  createdAt DateTime     @default(now())
+
+  bid  Bid   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model BidAssignment {
+  id         String   @id @default(cuid())
+  bidId      String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  bid  Bid  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([bidId, userId])
+}
